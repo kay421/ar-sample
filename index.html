@@ -1,1 +1,372 @@
-Hello world
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>NFT marker example with a WebWorker, WASM and with Three.js</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1">
+	<link rel="stylesheet" href="../css/video-style.css?r=1">
+</head>
+<body class="loading">
+	<div id="loading" >
+			<img  src="../Data/logo.gif"/>
+			<span class="loading-text">Loading, please wait</span>
+	</div>
+  <!--
+  ==================
+  STATS
+  ==================
+  -->
+
+      <div id="stats" class="ui stats">
+
+          <div id="stats1" class="stats-item">
+              <p class="stats-item-title">
+                  Main
+              </p>
+          </div>
+
+          <div id="stats2" class="stats-item">
+              <p class="stats-item-title">
+                  Worker
+              </p>
+          </div>
+
+      </div>
+
+  <!--
+  ==================
+  CAMERA VIDEO & CANVAS
+  ==================
+  -->
+
+      <div id="app">
+          <video
+              loop
+              autoplay
+              muted
+              playsinline
+              id="video">
+          </video>
+
+          <canvas id="canvas"></canvas>
+      </div>
+	  <div style="position: absolute; bottom: 0;">
+		<p>現在のMaker<br /><span id="ac"></span></p>
+		<canvas id="currentMakerCanvas" width="200" height="200" />
+	  </div>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+<script src="../js/third_party/three.js/stats.min.js"></script>
+<script src="../js/third_party/three.js/three.min.js"></script>
+<script src="threejs_wasm_worker.js?r=12"></script>
+
+<script>
+
+var isAccelerationMode = false;
+var x = 0;
+var y = 0;
+var z = 0;
+var old_x = 0;
+var old_y = 0;
+var old_z = 0;
+var isDraw = true;
+// 加速度センサーの値を利用
+function acceleration(){
+	// 加速度センサーの値を各変数に格納（値が小さく比較しずらいので100倍に）
+	 x = 100 * event.accelerationIncludingGravity.x;
+　 z = 100 * event.accelerationIncludingGravity.z;
+　 y = 100 * event.accelerationIncludingGravity.y;
+$("#ac").html("加速度" + "X：" + x.toFixed(2) + "　" + "Y：" + y.toFixed(2) +"　" + "Z：" + z.toFixed(2) +"");
+}
+var gate=0;
+var globalObj = {
+    dpi: 0,
+    nc: 0,
+    w: 0,
+    h: 0,
+    arr: []
+}
+
+/**
+ * STATS
+ */
+var statsMain = new Stats();
+statsMain.showPanel( 0 ); // 0: fps, 1: ms, 2: mb, 3+: custom
+document.getElementById( 'stats1' ).appendChild( statsMain.dom );
+
+var statsWorker = new Stats();
+statsWorker.showPanel( 0 ); // 0: fps, 1: ms, 2: mb, 3+: custom
+document.getElementById( 'stats2' ).appendChild( statsWorker.dom );
+
+/**
+ * APP / ELEMENTS
+ */
+var container = document.getElementById( 'app' );
+var video = document.getElementById( 'video' );
+var canvas = document.getElementById( 'canvas' );
+
+/**
+ * APP / VIDEO STREAM
+ */
+
+		if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+			var hint = {
+					audio: false,
+					video: {
+						facingMode: 'environment',
+					}
+			};
+			if( window.innerWidth < 800 ) {
+					var width = ( window.innerWidth < window.innerHeight ) ? 240 : 360;
+					var height = ( window.innerWidth < window.innerHeight ) ? 360 : 240;
+
+					var aspectRatio = window.innerWidth / window.innerHeight;
+
+					console.log( width, height );
+
+					hint = {
+							audio: false,
+							video: {
+									facingMode: 'environment',
+									width: { min: width, max: width },
+									width: { min: height, max: height }
+							},
+					};
+
+					console.log( hint );
+			}
+
+			navigator.mediaDevices.getUserMedia( hint ).then( function( stream ) {
+					video.srcObject = stream;
+					canvas.addEventListener("click", function(e){
+						if(gate){
+							alert("マーカー作成の処理中です。");
+							return;
+						}
+$("#ac").html("加速度");
+
+if(!isAccelerationMode){
+	isAccelerationMode = true;
+// 加速度センサーが使用可能だったら
+if(window.DeviceOrientationEvent){
+　//  ユーザーにアクセスの許可を求める関数があったら（iOS13以降の対応）
+　if(DeviceOrientationEvent.requestPermission){
+　　　// 加速度センサーへのアクセス許可を申請する
+　　　DeviceOrientationEvent.requestPermission().then(function(response){
+　　　　// リクエストが許可されたら
+　　　　if(response === "granted"){
+　　　　　// 傾きの変化を検知する「devicemotion」を使い、「acceleration()」を実行
+　　　　　$(window).on("devicemotion", acceleration);
+　　　　}
+　　　});
+　　// アクセスの許可を求める関数がなかったら
+　}else{
+　　// 回転や傾きの変化を検知する「devicemotion」を使い、「acceleration()」を実行
+　　$(window).on("devicemotion", acceleration);
+　}
+}
+}
+
+						var sscale = isMobile() ? window.outerWidth / video.videoWidth:1;
+
+						document.body.classList.add("loading");
+						document.getElementById("loading").style.display = "flex";
+						gate=1;
+						console.log("click");
+						var offsetX = e.offsetX; // =>要素左上からのx座標
+						var offsetY = e.offsetY; // =>要素左上からのy座標
+
+						// 取得したいRect
+						var rectSize = 200;
+						var halfPx = rectSize/2;
+						var x1 = (offsetX-halfPx<0)? 0: offsetX-halfPx;
+						var y1 = (offsetY-halfPx<0)? 0: offsetY-halfPx;
+						var x2 = x1 + rectSize;
+						var y2 = y1 + rectSize;
+						if(x2 > video.videoWidth*sscale){
+							x1 = (video.videoWidth*sscale)-rectSize;
+							x2 = video.videoWidth*sscale;
+						}
+						if(y2 > video.videoWidth*sscale){
+							y1 = (video.videoHeight*sscale)-rectSize;
+							y2 = video.videoHeight*sscale;
+						}
+						console.log(x1, y1, x2, y2);
+
+						var mem_canvas = document.createElement("canvas");
+						mem_canvas.width = rectSize;
+						mem_canvas.height = rectSize;
+						var context = mem_canvas.getContext('2d');
+						// canvasに画像を作成
+						
+						context.drawImage(video, (x1)/sscale, y1/sscale, (x2-x1)/sscale, (y2-y1)/sscale, 0, 0, rectSize, rectSize);
+						//data = mem_canvas.toDataURL("image/png");
+						//console.log(data);
+
+						globalObj.dpi = 72;
+						globalObj.w = rectSize;
+            			globalObj.h = rectSize;
+
+						imgData = context.getImageData(0, 0, mem_canvas.width, mem_canvas.height);
+						let newArr = [];
+
+						let verifyColorSpace = detectColorSpace(imgData.data);
+
+						if (verifyColorSpace == 1) {
+							for (let j = 0; j < imgData.data.length; j += 4) {
+								newArr.push(imgData.data[j]);
+							}
+						} else if (verifyColorSpace == 3) {
+							for (let j = 0; j < imgData.data.length; j += 4) {
+								newArr.push(imgData.data[j]);
+								newArr.push(imgData.data[j + 1]);
+								newArr.push(imgData.data[j + 2]);
+							}
+						}
+
+						globalObj.nc = verifyColorSpace;
+
+						let uint = new Uint8Array(newArr);
+
+						globalObj.arr = uint;
+
+						// ファイル名を作ってアップロードさせる 暫定処理。中身確認してバイナリを直接読ませるようにすべき本来は。
+						var random =  ("000000" + Math.floor( Math.random() * (100000 + 1))).slice(-6) ;
+						var filename = new Date().getTime() + random
+						generateUploadStart(filename);
+
+						// 現在のMaker表示
+						var currentMakerCanvas = document.querySelector('#currentMakerCanvas');
+						currentMakerCanvas.getContext('2d').putImageData(imgData, 0, 0);
+
+					});
+					video.addEventListener( 'loadedmetadata', function() {
+							video.play();
+
+							console.log( 'video', video, video.videoWidth, video.videoHeight );
+
+							start(
+								container,
+								{
+									width: 200,
+									height: 200,
+									dpi: 72,
+									url: "./nft/1616835290530035871",
+								},
+				//				markers['pinball'],
+								video,
+								video.videoWidth,
+								video.videoHeight,
+								canvas,
+								function() {
+										statsMain.update()
+								},
+								function() {
+										statsWorker.update();
+								},
+								null
+							);
+					} );
+			} );
+	}
+	function generateUploadStart(filename) {
+		setTimeout(() => {
+			let cmdArr = [0, filename];
+
+			let paramStr = cmdArr.join(' ');
+			console.log(paramStr)
+			let StrBuffer = Module._malloc(paramStr.length + 1);
+			Module.writeStringToMemory(paramStr, StrBuffer);
+			
+			let heapSpace = Module._malloc(globalObj.arr.length * globalObj.arr.BYTES_PER_ELEMENT); // 1
+			Module.HEAPU8.set(globalObj.arr, heapSpace); // 2
+
+			Module._createImageSet(heapSpace, globalObj.dpi, globalObj.w, globalObj.h, globalObj.nc, StrBuffer);
+
+			Module._free(heapSpace);
+			Module._free(StrBuffer);
+			
+			post(filename);
+			// アップロードしたやつで開始する
+			/*
+			start(
+				container,
+				{
+					width: globalObj.w,
+					height: globalObj.h,
+					dpi: globalObj.dpi,
+					url: "./nft/"+filename,
+    			},
+				video,
+				video.videoWidth,
+				video.videoHeight,
+				canvas,
+				function() {
+						statsMain.update()
+				},
+				function() {
+						statsWorker.update();
+				},
+				null
+			);
+			*/
+			start3(
+				{
+					width: globalObj.w,
+					height: globalObj.h,
+					dpi: globalObj.dpi,
+					url: "./nft/"+filename,
+    			}
+			);
+			
+		}, 500);
+	}
+	function post(filename) {
+		let filenameIset = "asa.iset";
+		let filenameFset = "asa.fset";
+		let filenameFset3 = "asa.fset3";
+
+		let content = Module.FS.readFile(filenameIset);
+		let contentFset = Module.FS.readFile(filenameFset);
+		let contentFset3 = Module.FS.readFile(filenameFset3);
+
+		// フォームに入力した値をリクエストとして設定
+		//var request = "filename=" + filename + "&iset=" + btoa(new Blob([content])) + "&fset=" + btoa(new Blob([contentFset]))+ "&fset3=" + btoa(new Blob([contentFset3]));
+		
+		xhr = new XMLHttpRequest();
+		const formData = new FormData();
+		formData.append('iset', new Blob([content]), filename+'.iset');
+		formData.append('fset', new Blob([contentFset]), filename+'.fset');
+		formData.append('fset3', new Blob([contentFset3]), filename+'.fset3');
+		xhr.open('POST', 'makerset.php', false);
+	//	xhr.setRequestHeader('content-type', 'application/x-www-form-urlencoded;charset=UTF-8');
+		xhr.send(formData);
+	}
+
+	function detectColorSpace(arr) {
+		let target = parseInt(arr.length / 4);
+
+		let counter = 0;
+
+		for (let j = 0; j < arr.length; j += 4) {
+			let r = arr[j];
+			let g = arr[j + 1];
+			let b = arr[j + 2];
+
+			if (r == g && r == b) {
+				counter++;
+			}
+		}
+
+		if (target == counter) {
+			return 1;
+		} else {
+			return 3;
+		}
+	}
+</script>
+<script type="text/javascript">
+	var artoolkit_wasm_url = './libs/NftMarkerCreator_wasm.wasm';
+</script>
+<script async="" type="text/javascript" src="./libs/NftMarkerCreator_wasm.js"></script>
+</body>
+</html>
